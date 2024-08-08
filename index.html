@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ball Game with Levels, Power-Ups, and Restart</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        #restartButton {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 10px 20px;
+            font-size: 24px;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: none; /* Hidden by default */
+        }
+    </style>
+    <!-- Include p5.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+</head>
+<body>
+    <button id="restartButton" onclick="restartGame()">Restart Game</button>
+    <script>
+        let player;
+        let obstacles = [];
+        let powerUps = [];
+        let score = 0;
+        let level = 1;
+        let obstacleSpeed = 3;
+        let obstacleInterval = 40; // Number of frames between new obstacles
+        let framesUntilNextObstacle = obstacleInterval;
+        let scoreToNextLevel = 10;
+        let gameOverFlag = false;
+        let moveX = 0;
+        let moveY = 0;
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            startGame();
+        }
+
+        function draw() {
+            background(240);
+
+            if (gameOverFlag) return;
+
+            // Update and display player
+            player.move(moveX, moveY);
+            player.update();
+            player.display();
+
+            // Update and display obstacles
+            if (framesUntilNextObstacle <= 0) {
+                obstacles.push(new Obstacle(random(width), -30, random(30, 50), random(30, 50)));
+                framesUntilNextObstacle = obstacleInterval; // Reset the interval
+            }
+            framesUntilNextObstacle--;
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obstacle = obstacles[i];
+                obstacle.update();
+                obstacle.display();
+                if (player.collidesWith(obstacle)) {
+                    if (!player.hasShield) {
+                        gameOver();
+                    }
+                }
+                if (obstacle.offScreen()) {
+                    obstacles.splice(i, 1); // Remove off-screen obstacles
+                    score++;
+                    if (score % scoreToNextLevel === 0) {
+                        levelUp();
+                    }
+                }
+            }
+
+            // Update and display power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                let powerUp = powerUps[i];
+                powerUp.update();
+                powerUp.display();
+                if (player.collidesWith(powerUp)) {
+                    powerUps.splice(i, 1); // Remove collected power-up
+                }
+                if (powerUp.offScreen()) {
+                    powerUps.splice(i, 1); // Remove off-screen power-ups
+                }
+            }
+
+            // Display score and level
+            fill(0);
+            textSize(24);
+            text(`Score: ${score}`, 10, 30);
+            text(`Level: ${level}`, 10, 60);
+            if (player.hasShield) {
+                fill(0, 255, 0);
+                textSize(24);
+                text('Shield Active', width - 150, 30);
+            }
+        }
+
+        function keyPressed() {
+            if (keyCode === LEFT_ARROW) {
+                moveX = -10;
+            } else if (keyCode === RIGHT_ARROW) {
+                moveX = 10;
+            } else if (keyCode === UP_ARROW) {
+                moveY = -10;
+            } else if (keyCode === DOWN_ARROW) {
+                moveY = 10;
+            } else if (key === ' ') { // Spacebar for power-up activation
+                player.activateShield();
+            }
+        }
+
+        function keyReleased() {
+            if (keyCode === LEFT_ARROW || keyCode === RIGHT_ARROW) {
+                moveX = 0;
+            }
+            if (keyCode === UP_ARROW || keyCode === DOWN_ARROW) {
+                moveY = 0;
+            }
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+
+        function gameOver() {
+            noLoop(); // Stop the draw loop
+            gameOverFlag = true;
+            document.getElementById('restartButton').style.display = 'block'; // Show restart button
+            fill(0);
+            textSize(48);
+            textAlign(CENTER, CENTER);
+            text("Game Over!", width / 2, height / 2 - 60);
+            textSize(24);
+            text("Press Restart to Play Again", width / 2, height / 2);
+        }
+
+        function restartGame() {
+            document.getElementById('restartButton').style.display = 'none'; // Hide restart button
+            startGame();
+        }
+
+        function startGame() {
+            obstacles = [];
+            powerUps = [];
+            score = 0;
+            level = 1;
+            obstacleSpeed = 3;
+            obstacleInterval = 40;
+            framesUntilNextObstacle = obstacleInterval;
+            gameOverFlag = false;
+            moveX = 0;
+            moveY = 0;
+            player = new Ball(width / 2, height - 60, 30);
+            loop(); // Restart the draw loop
+        }
+
+        function levelUp() {
+            level++;
+            obstacleSpeed += 1; // Increase speed with each level
+            obstacleInterval = max(10, obstacleInterval - 5); // Decrease interval, but not below 10 frames
+            scoreToNextLevel += 10; // Increase score needed for the next level
+
+            // Add a power-up at random intervals
+            if (random() < 0.3) {
+                powerUps.push(new PowerUp(random(width), -30, 20));
+            }
+        }
+
+        class Ball {
+            constructor(x, y, r) {
+                this.x = x;
+                this.y = y;
+                this.r = r;
+                this.hasShield = false;
+                this.shieldDuration = 0;
+            }
+
+            update() {
+                // Keep ball within canvas boundaries
+                this.x = constrain(this.x, this.r, width - this.r);
+                this.y = constrain(this.y, this.r, height - this.r);
+
+                // Manage shield duration
+                if (this.hasShield) {
+                    this.shieldDuration--;
+                    if (this.shieldDuration <= 0) {
+                        this.deactivateShield();
+                    }
+                }
+            }
+
+            move(x, y) {
+                this.x += x;
+                this.y += y;
+            }
+
+            display() {
+                fill(255, 100, 100);
+                stroke(50);
+                strokeWeight(4);
+                ellipse(this.x, this.y, this.r * 2);
+            }
+
+            collidesWith(object) {
+                let distX = abs(this.x - (object.x + object.w / 2));
+                let distY = abs(this.y - (object.y + object.h / 2));
+
+                if (distX > (object.w / 2 + this.r)) { return false; }
+                if (distY > (object.h / 2 + this.r)) { return false; }
+
+                if (distX <= (object.w / 2)) { return true; }
+                if (distY <= (object.h / 2)) { return true; }
+
+                let dx = distX - object.w / 2;
+                let dy = distY - object.h / 2;
+                return (dx * dx + dy * dy <= (this.r * this.r));
+            }
+
+            activateShield() {
+                if (!this.hasShield) {
+                    this.hasShield = true;
+                    this.shieldDuration = 200; // Shield lasts for 200 frames
+                }
+            }
+
+            deactivateShield() {
+                this.hasShield = false;
+            }
+        }
+
+        class Obstacle {
+            constructor(x, y, w, h) {
+                this.x = x;
+                this.y = y;
+                this.w = w;
+                this.h = h;
+                this.speed = obstacleSpeed;
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+
+            display() {
+                fill(100, 100, 255);
+                stroke(50);
+                strokeWeight(3);
+                rect(this.x, this.y, this.w, this.h);
+            }
+
+            offScreen() {
+                return this.y > height;
+            }
+        }
+
+        class PowerUp {
+            constructor(x, y, r) {
+                this.x = x;
+                this.y = y;
+                this.r = r;
+                this.speed = 3;
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+
+            display() {
+                fill(255, 255, 0);
+                stroke(50);
+                strokeWeight(3);
+                ellipse(this.x, this.y, this.r * 2);
+            }
+
+            offScreen() {
+                return this.y > height;
+            }
+        }
+    </script>
+</body>
+</html>
